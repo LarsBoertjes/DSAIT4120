@@ -36,16 +36,22 @@ int getImageOffset(const Image<T>& image, int x, int y)
 
 glm::vec2 getRGBImageMinMax(const ImageRGB& image) {
 
-    auto min_val = 0.0f;
-    auto max_val = 0.0f;
-
     // Write a code that will return minimum value (min of all color channels and pixels) and maximum value as a glm::vec2(min,max).
     
     // Note: Parallelize the code using OpenMP directives for full points.
     
-    /*******
-     * TODO: YOUR CODE GOES HERE!!!
-     ******/
+    auto min_val = std::numeric_limits<float>::max();
+    auto max_val = std::numeric_limits<float>::min();
+
+    #pragma omp parallel for reduction(min : min_val) reduction(max:max_val)
+    for (int y = 0; y < image.height; y++) {
+        for (int x = 0; x < image.width; x++) {
+            glm::vec3 pixel = image.data[y * image.width + x];
+
+            min_val = std::min(min_val, std::min(pixel.x, std::min(pixel.y, pixel.z)));
+            max_val = std::max(max_val, std::max(pixel.x, std::max(pixel.y, pixel.z)));
+        }
+    }
 
     // Return min and max value as x and y components of a vector.
     return glm::vec2(min_val, max_val);
@@ -57,14 +63,26 @@ ImageRGB normalizeRGBImage(const ImageRGB& image)
     // Create an empty image of the same size as input.
     auto result = ImageRGB(image.width, image.height);
 
+    if (image.width == 0 || image.height == 0) {
+        return result;
+    }
+
     // Find min and max values.
     glm::vec2 min_max = getRGBImageMinMax(image);
 
+
     // Fill the result with normalized image values (ie, fit the image to [0,1] range).    
     
-    /*******
-     * TODO: YOUR CODE GOES HERE!!!
-     ******/
+     for (int y = 0; y < image.height; y++) {
+        for (int x = 0; x < image.width; x++) {
+
+            if (min_max[1] - min_max[0] == 0) {
+                result.data[y * result.width + x] == glm::vec3(0.0f);
+            } else {
+                result.data[y * result.width + x] = (image.data[y * image.width + x] - min_max[0]) / (min_max[1] - min_max[0]);
+            }
+        }
+    }
 
     return result;
 }
