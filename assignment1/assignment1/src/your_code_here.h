@@ -92,11 +92,26 @@ ImageRGB applyGamma(const ImageRGB& image, const float gamma)
     // Create an empty image of the same size as input.
     auto result = ImageRGB(image.width, image.height);
 
-    // Fill the result with gamma mapped pixel values (result = image^gamma).    
-    
+    // Fill the result with gamma mapped pixel values (result = image^gamma).
+
     /*******
      * TODO: YOUR CODE GOES HERE!!!
      ******/
+
+    if (image.width == 0 || image.height == 0) {
+        return result;
+    }
+
+    for (int y = 0; y < image.height; y++) {
+        for (int x = 0; x < image.width; x++) {
+            glm::vec3 pixel = image.data[y * image.width + x];
+
+            // Question std::pow(pixel.x, gamma) or std::pow(pixel.x, 1.0f / gamma)?
+            result.data[y * result.width + x].x = std::pow(pixel.x, gamma);
+            result.data[y * result.width + x].y = std::pow(pixel.y, gamma);
+            result.data[y * result.width + x].z = std::pow(pixel.z, gamma);
+        }
+    }
 
     return result;
 }
@@ -123,6 +138,21 @@ ImageFloat rgbToLuminance(const ImageRGB& rgb)
      * TODO: YOUR CODE GOES HERE!!!
      ******/
 
+    if (rgb.width == 0 || rgb.height == 0) {
+        return luminance;
+    }
+
+    for (int y = 0; y < rgb.height; y++) {
+        for (int x = 0; x < rgb.width; x++) {
+
+            glm::vec3 pixel = rgb.data[y * rgb.width + x];
+
+            float lum = pixel.x * WEIGHTS_RGB_TO_LUM.x + pixel.y * WEIGHTS_RGB_TO_LUM.y + pixel.z * WEIGHTS_RGB_TO_LUM.z;
+
+            luminance.data[y * luminance.width + x] = lum;
+        }
+    }
+
     return luminance;
 }
 
@@ -145,11 +175,58 @@ ImageFloat bilateralFilter(const ImageFloat& H, const int size, const float spac
     // Empty output image.
     auto result = ImageFloat(H.width, H.height);
 
-    /*******
-     * TODO: YOUR CODE GOES HERE!!!
-     ******/
+    int radius = size / 2;
 
-    // Return filtered intensity.
+    // Spatial guassian kernel
+    std::vector<float> spatial_kernel(size * size);
+    float sum_spatial = 0.0f;
+    for (int y = -radius; y <= radius; y++) {
+        for (int x = -radius; x <= radius; x++) {
+            float dist_squared = x * x + y * y;
+            float weight = exp(-dist_squared / (2 * space_sigma * space_sigma));
+            spatial_kernel[(y + radius) * size + (x + radius)] = weight;
+            sum_spatial += weight;
+        }
+    }
+
+    // Normalization
+    for (auto& weight : spatial_kernel) {
+        weight /= sum_spatial;
+    }
+
+    // Apply bilateral filter
+    for (int y = 0; y < H.height; y++) {
+        for (int x = 0; x < H.width; x++) {
+            float filtered_value = 0.0f;
+            float weight_sum = 0.0f;
+
+            // Go through the kernel window.
+            for (int ky = -radius; ky <= radius; ky++) {
+                for (int kx = -radius; kx <= radius; kx++) {
+                    int nx = x + kx;
+                    int ny = y + ky;
+
+                    // Skip pixels outside the image
+                    if (nx < 0 || nx >= H.width || ny < 0 || ny >= H.height)
+                        continue;
+
+                    // Compute intensity gaussian weight
+                    float intensity_diff = H.data[ny * H.width + nx] - H.data[y * H.width + x];
+                    float range_weight = exp(-intensity_diff * intensity_diff / (2 * range_sigma * range_sigma));
+
+                    // final weight = spatial weight * range weight
+                    float weight = spatial_kernel[(ky + radius) * size + (kx + radius)] * range_weight;
+
+                    filtered_value += H.data[ny * H.width + nx] * weight;
+                    weight_sum += weight;
+                }
+            }
+
+            // Normalize and assign the result.
+            result.data[y * result.width + x] = filtered_value / weight_sum;
+        }
+    }
+
     return result;
 }
 
@@ -171,6 +248,24 @@ ImageFloat applyDurandToneMappingOperator(const ImageFloat& base_layer, const Im
     /*******
      * TODO: YOUR CODE GOES HERE!!!
      ******/
+
+
+    for (int y = 0; y < base_layer.height; y++) {
+        for (int x = 0; x < base_layer.width; x++) {
+            // Scale the base layer and add the detail layer
+            float scaled_base_value = base_layer.data[y * base_layer.width + x] * base_scale;
+            float detail_value = detail_layer.data[y * detail_layer.width + x];
+            result.data[y * result.width + x] = scaled_base_value + detail_value;
+
+            // Convert from log to linear luminance
+            result.data[y * result.width + x] = std::exp(result.data[y * result.width + x]);
+
+            // Multiply the result by output_gain
+            result.data[y * result.width + x] *= output_gain;
+
+
+        }
+    }
 
     // Return final result as SDR.
     return result;
@@ -196,6 +291,36 @@ ImageRGB rescaleRgbByLuminance(const ImageRGB& original_rgb, const ImageFloat& o
      * TODO: YOUR CODE GOES HERE!!!
      ******/
 
+    for (int y = 0; y < original_rgb.height; y++) {
+        for (int x = 0; x < original_rgb.width; x++) {
+            
+            // get both original and new luminance
+            float original_lum = original_luminance.data[y * original_luminance.width + x];
+            float new_lum = new_luminance.data[y * new_luminance.width + x];
+
+            // avoid division by zero
+            if (original_lum < EPSILON) {
+                original_lum = EPSILON;
+            }
+
+            if (new_lum < EPSILON) {
+                new_lum = EPSILON;
+            }
+
+            float lum_ratio = new_lum / original_lum;
+
+            glm::vec3 original_pixel = original_rgb.data[y * original_rgb.width + x];
+            glm::vec3 scaled_pixel = original_pixel * lum_ratio;
+
+            scaled_pixel *= saturation;
+
+            scaled_pixel = glm::clamp(scaled_pixel, glm::vec3(0.0f), glm::vec3(1.0f));
+
+            result.data[y * result.width + x] = scaled_pixel;
+          
+        }
+    }
+
     return result;
 }
 
@@ -216,18 +341,29 @@ ImageRGB rescaleRgbByLuminance(const ImageRGB& original_rgb, const ImageFloat& o
 /// <returns>grad image</returns>
 ImageGradient getGradients(const ImageFloat& image)
 {
-    // An empty gradient pair (dx, dy).
+    // Create an empty gradient pair (dx, dy), with 1px larger size to handle boundary gradients.
     auto grad = ImageGradient({ image.width + 1, image.height + 1 }, { image.width + 1, image.height + 1 });
 
-    /*******
-     * TODO: YOUR CODE GOES HERE!!!
-     ******/
+    // Compute the gradients in both x and y directions.
+    for (int y = 0; y < image.height; y++) {
+        for (int x = 0; x < image.width; x++) {
+            // For dx (horizontal gradient), we take the difference with the right neighbor.
+            float dx_value = 0.0f;
+            if (x < image.width - 1) { // If not at the right boundary
+                dx_value = image.data[y * image.width + (x + 1)] - image.data[y * image.width + x];
+            }
+            grad.dx.data[(y + 1) * grad.dx.width + (x + 1)] = dx_value;
 
-    // Example:
-    // grad.dx.data[getImageOffset(grad.dx, 0, 0)] = 0.0f; // TODO: Change this!
-    // grad.dy.data[getImageOffset(grad.dy, 0, 0)] = 0.0f; // TODO: Change this!
+            // For dy (vertical gradient), we take the difference with the bottom neighbor.
+            float dy_value = 0.0f;
+            if (y < image.height - 1) { // If not at the bottom boundary
+                dy_value = image.data[(y + 1) * image.width + x] - image.data[y * image.width + x];
+            }
+            grad.dy.data[(y + 1) * grad.dy.width + (x + 1)] = dy_value;
+        }
+    }
 
-    // Return both gradients in an ImageGradient struct.
+    // Return the gradient pair (dx, dy).
     return grad;
 }
 
