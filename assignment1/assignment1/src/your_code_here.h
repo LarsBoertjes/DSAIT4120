@@ -16,19 +16,17 @@
 template<typename T>
 int getImageOffset(const Image<T>& image, int x, int y)
 {
-    // Return offset of the pixel at column x and row y in memory such that 
-    // the pixel can be accessed by image.data[offset].
-    // 
-    // Note, that the image is stored in row-first order, 
-    // ie. is the order of [x,y] pixels is [0,0],[1,0],[2,0]...[0,1],[1,1][2,1],...
+    // Return offset of the pixel at column x and row y in memory such that
+    // the pixel can be accessed by image.data[offset]
+    //
+    // Note, that the image is stored in row-first order,
+    // i.e., is the order of [x,y] pixels is [0,0], [1,0], [2,0]...[0,1],[1,1],[2,1]...
     //
     // Image size can be accessed using image.width and image.height.
     
-    /*******
-     * TODO: YOUR CODE GOES HERE!!!
-     ******/
+    
 
-    return 0;
+    return y * image.width + x;
 }
 
 
@@ -287,42 +285,29 @@ ImageRGB rescaleRgbByLuminance(const ImageRGB& original_rgb, const ImageFloat& o
     // An empty RGB image for the result.
     auto result = ImageRGB(original_rgb.width, original_rgb.height);
 
-    /*******
-     * TODO: YOUR CODE GOES HERE!!!
-     ******/
-
     for (int y = 0; y < original_rgb.height; y++) {
         for (int x = 0; x < original_rgb.width; x++) {
-            
-            // get both original and new luminance
-            float original_lum = original_luminance.data[y * original_luminance.width + x];
-            float new_lum = new_luminance.data[y * new_luminance.width + x];
 
-            // avoid division by zero
-            if (original_lum < EPSILON) {
-                original_lum = EPSILON;
-            }
+            float Lhdr = std::max(original_luminance.data[y * original_luminance.width + x], EPSILON);
+            float Lsdr = std::max(new_luminance.data[y * new_luminance.width + x], EPSILON);
 
-            if (new_lum < EPSILON) {
-                new_lum = EPSILON;
-            }
+            glm::vec3 Ihdr = original_rgb.data[y * original_rgb.width + x];
 
-            float lum_ratio = new_lum / original_lum;
+            glm::vec3 Isdr = (Ihdr / Lhdr);
 
-            glm::vec3 original_pixel = original_rgb.data[y * original_rgb.width + x];
-            glm::vec3 scaled_pixel = original_pixel * lum_ratio;
+            Isdr = glm::pow(Isdr, glm::vec3(saturation));
+            Isdr = Isdr * Lsdr;
 
-            scaled_pixel *= saturation;
+            Isdr = glm::clamp(Isdr, glm::vec3(0.0f), glm::vec3(1.0f));
 
-            scaled_pixel = glm::clamp(scaled_pixel, glm::vec3(0.0f), glm::vec3(1.0f));
-
-            result.data[y * result.width + x] = scaled_pixel;
-          
+            result.data[y * result.width + x] = Isdr;
         }
     }
 
     return result;
 }
+
+
 
 
 
@@ -341,29 +326,26 @@ ImageRGB rescaleRgbByLuminance(const ImageRGB& original_rgb, const ImageFloat& o
 /// <returns>grad image</returns>
 ImageGradient getGradients(const ImageFloat& image)
 {
-    // Create an empty gradient pair (dx, dy), with 1px larger size to handle boundary gradients.
+    // Empty fields for dX and dY gradients 1 px bigger than the input image.
     auto grad = ImageGradient({ image.width + 1, image.height + 1 }, { image.width + 1, image.height + 1 });
 
-    // Compute the gradients in both x and y directions.
     for (int y = 0; y < image.height; y++) {
         for (int x = 0; x < image.width; x++) {
-            // For dx (horizontal gradient), we take the difference with the right neighbor.
-            float dx_value = 0.0f;
-            if (x < image.width - 1) { // If not at the right boundary
-                dx_value = image.data[y * image.width + (x + 1)] - image.data[y * image.width + x];
-            }
-            grad.dx.data[(y + 1) * grad.dx.width + (x + 1)] = dx_value;
 
-            // For dy (vertical gradient), we take the difference with the bottom neighbor.
-            float dy_value = 0.0f;
-            if (y < image.height - 1) { // If not at the bottom boundary
-                dy_value = image.data[(y + 1) * image.width + x] - image.data[y * image.width + x];
-            }
-            grad.dy.data[(y + 1) * grad.dy.width + (x + 1)] = dy_value;
+            float current = (x < image.width && y < image.height) ? image.data[getImageOffset(image, x, y)] : 0.0f;
+            float left = (x > 0 && y < image.height) ? image.data[getImageOffset(image, x - 1, y)] : 0.0f;
+            float top = (x < image.width && y > 0) ? image.data[getImageOffset(image, x, y - 1)] : 0.0f;
+            
+            float x_grad = current - left;
+            float y_grad = current - top;
+
+            grad.dx.data[getImageOffset(grad.dx, x, y)] = x_grad;
+            grad.dy.data[getImageOffset(grad.dy, x, y)] = y_grad;
+
         }
     }
 
-    // Return the gradient pair (dx, dy).
+    // Return both gradients in an ImageGradient struct
     return grad;
 }
 
@@ -384,9 +366,33 @@ ImageGradient copySourceGradientsToTarget(const ImageGradient& source, const Ima
     // An empty gradient pair (dx, dy).
     ImageGradient result = ImageGradient({ target.dx.width, target.dx.height }, { target.dx.width, target.dx.height });
 
-    /*******
-     * TODO: YOUR CODE GOES HERE!!!
-     ******/
+    for (int y = 0; y < source_mask.height; y++) {
+        for (int x = 0; x < source_mask.width; x++) {
+            float mask_value = source_mask.data[getImageOffset(source_mask, x, y)];
+
+            if (source_mask.data[y * source_mask.width + x] > 0.5) {
+                result.dx.data[getImageOffset(result.dx, x, y)] = source.dx.data[getImageOffset(source.dx, x, y)];
+                result.dy.data[getImageOffset(result.dy, x, y)] = source.dy.data[getImageOffset(source.dy, x, y)];
+            } else {
+                result.dx.data[getImageOffset(result.dx, x, y)] = target.dx.data[getImageOffset(target.dx, x, y)];
+                result.dy.data[getImageOffset(result.dy, x, y)] = target.dy.data[getImageOffset(target.dy, x, y)];
+            }
+
+            if (x > 0) {
+                float left_mask_value = source_mask.data[getImageOffset(source_mask, x - 1, y)];
+                if (mask_value > 0.5 != left_mask_value > 0.5) {
+                    result.dx.data[getImageOffset(result.dx, x, y)] = 0.0f;
+                }
+            }
+
+            if (y > 0) {
+                float top_mask_value = source_mask.data[getImageOffset(source_mask, x, y - 1)];
+                if (mask_value > 0.5 != top_mask_value > 0.5) {
+                    result.dy.data[getImageOffset(result.dy, x, y)] = 0.0f;
+                }
+            }
+        }
+    }
 
     return result;
 }
@@ -403,19 +409,21 @@ ImageGradient copySourceGradientsToTarget(const ImageGradient& source, const Ima
 /// <returns>div G</returns>
 ImageFloat getDivergence(ImageGradient& gradients)
 {
-
-    // An empty divergence field.
     auto div_G = ImageFloat(gradients.dx.width + 1, gradients.dx.height + 1);
 
-    /*******
-     * TODO: YOUR CODE GOES HERE!!!
-     ******/
+    for (int y = 0; y < gradients.dx.height; y++) {
+        for (int x = 0; x < gradients.dx.width; x++) {
+
+            float dx_contribution = gradients.dx.data[getImageOffset(gradients.dx, x, y)] - (x > 0 ? gradients.dx.data[getImageOffset(gradients.dx, x - 1, y)] : 0.0f);
+
+            float dy_contribution = gradients.dy.data[getImageOffset(gradients.dy, x, y)] - (y > 0 ? gradients.dy.data[getImageOffset(gradients.dy, x, y - 1)] : 0.0f);
+
+            div_G.data[getImageOffset(div_G, x, y)] = dx_contribution + dy_contribution;
+        }
+    }
 
     return div_G;
 }
-
-
-
 
 
 /// <summary>
@@ -427,35 +435,41 @@ ImageFloat getDivergence(ImageGradient& gradients)
 /// <returns>luminance I</returns>
 ImageFloat solvePoisson(const ImageFloat& initial_solution, const ImageFloat& divergence_G, const int num_iters = 2000)
 {
-    // Initial solution guess.
+    // Initialize the solution with the initial guess (usually zeros or initial values).
     auto I = ImageFloat(initial_solution);
-
-    // Another solution for the alteranting updates.
+    // Another solution for alternating updates.
     auto I_next = ImageFloat(I.width, I.height);
 
-    // Iterative solver.
-    for (auto iter = 0; iter < num_iters; iter++)
-    {
+    // Iterative solver loop.
+    for (auto iter = 0; iter < num_iters; iter++) {
         if (iter % 500 == 0) {
-            // Print progress info every 500 iteartions.
+            // Print progress info every 500 iterations.
             std::cout << "[" << iter << "/" << num_iters << "] Solving Poisson equation..." << std::endl;
         }
 
-        // Compute values of I based following the update rule in the slides.
+        // Iterate over each pixel to update the solution using the Poisson equation update rule
+        for (int y = 1; y < I.height - 1; y++) {
+            for (int x = 1; x < I.width - 1; x++) {
+                // Using the update rule for Poisson equation:
+                // I_next(x, y) = 1/4 * (I(x+1, y) + I(x-1, y) + I(x, y+1) + I(x, y-1) - div_G(x, y))
+                float div_G_value = divergence_G.data[getImageOffset(divergence_G, x, y)];
 
-        // Note: Parallelize the code using OpenMP directives for full points.
+                // Calculate the update based on the neighbors and divergence
+                float updated_value = 0.25f * (I.data[getImageOffset(I, x + 1, y)] + I.data[getImageOffset(I, x - 1, y)] + I.data[getImageOffset(I, x, y + 1)] + I.data[getImageOffset(I, x, y - 1)] - div_G_value);
 
-        /*******
-         * TODO: YOUR CODE GOES HERE!!!
-         ******/
-        // Swaps the current and next solution so that the next iteration
-        // uses the new solution as input and the previous solution as output.
+                // Set the updated value in the next solution image
+                I_next.data[getImageOffset(I_next, x, y)] = updated_value;
+            }
+        }
+
+        // Swap the current and next solutions so that I_next becomes I for the next iteration.
         std::swap(I, I_next);
     }
 
-    // After the last "swap", I is the latest solution.
+    // Return the final solution after all iterations.
     return I;
 }
+
 
 #pragma endregion Poisson editing
 
