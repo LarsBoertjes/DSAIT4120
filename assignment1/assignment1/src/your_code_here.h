@@ -92,10 +92,6 @@ ImageRGB applyGamma(const ImageRGB& image, const float gamma)
 
     // Fill the result with gamma mapped pixel values (result = image^gamma).
 
-    /*******
-     * TODO: YOUR CODE GOES HERE!!!
-     ******/
-
     if (image.width == 0 || image.height == 0) {
         return result;
     }
@@ -131,10 +127,6 @@ ImageFloat rgbToLuminance(const ImageRGB& rgb)
     auto luminance = ImageFloat(rgb.width, rgb.height);
     // Fill the image by logarithmic luminace.
     // Luminance is a linear combination of the red, green and blue channels using the weights above.
-
-    /*******
-     * TODO: YOUR CODE GOES HERE!!!
-     ******/
 
     if (rgb.width == 0 || rgb.height == 0) {
         return luminance;
@@ -242,11 +234,6 @@ ImageFloat applyDurandToneMappingOperator(const ImageFloat& base_layer, const Im
 {
     // Empty output image.
     auto result = ImageFloat(base_layer.width, base_layer.height);
-
-    /*******
-     * TODO: YOUR CODE GOES HERE!!!
-     ******/
-
 
     for (int y = 0; y < base_layer.height; y++) {
         for (int x = 0; x < base_layer.width; x++) {
@@ -442,22 +429,23 @@ ImageFloat solvePoisson(const ImageFloat& initial_solution, const ImageFloat& di
 
     // Iterative solver loop.
     for (auto iter = 0; iter < num_iters; iter++) {
+
+
+        // Note: Parallelize the code using OpenMP directives or full points
+
         if (iter % 500 == 0) {
             // Print progress info every 500 iterations.
             std::cout << "[" << iter << "/" << num_iters << "] Solving Poisson equation..." << std::endl;
         }
 
-        // Iterate over each pixel to update the solution using the Poisson equation update rule
+        #pragma omp parallel for collapse(2)
         for (int y = 1; y < I.height - 1; y++) {
             for (int x = 1; x < I.width - 1; x++) {
-                // Using the update rule for Poisson equation:
-                // I_next(x, y) = 1/4 * (I(x+1, y) + I(x-1, y) + I(x, y+1) + I(x, y-1) - div_G(x, y))
+
                 float div_G_value = divergence_G.data[getImageOffset(divergence_G, x, y)];
 
-                // Calculate the update based on the neighbors and divergence
                 float updated_value = 0.25f * (I.data[getImageOffset(I, x + 1, y)] + I.data[getImageOffset(I, x - 1, y)] + I.data[getImageOffset(I, x, y + 1)] + I.data[getImageOffset(I, x, y - 1)] - div_G_value);
 
-                // Set the updated value in the next solution image
                 I_next.data[getImageOffset(I_next, x, y)] = updated_value;
             }
         }
