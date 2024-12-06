@@ -75,7 +75,7 @@ ImageRGB normalizeRGBImage(const ImageRGB& image)
         for (int x = 0; x < image.width; x++) {
 
             if (min_max[1] - min_max[0] == 0) {
-                result.data[y * result.width + x] == glm::vec3(0.0f);
+                result.data[y * result.width + x] = glm::vec3(0.0f);
             } else {
                 result.data[y * result.width + x] = (image.data[y * image.width + x] - min_max[0]) / (min_max[1] - min_max[0]);
             }
