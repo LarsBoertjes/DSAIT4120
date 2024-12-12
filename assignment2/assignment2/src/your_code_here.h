@@ -104,10 +104,41 @@ ImageFloat jointBilateralFilter(const ImageFloat& disparity, const ImageRGB& gui
     // Notes:
     //   * If a pixel has no neighbor (all were skipped), assign INVALID_VALUE to the output.  
     //   * One point awarded for a correct OpenMP parallelization.
+    
+    int radius = size / 2;
 
-    //
-    //    YOUR CODE GOES HERE
-    //
+    // 1. Iterate over all output pixels.
+    for (int y = 0; y < result.height; y++) {
+        for (int x = 0; x < result.width; x++) {
+            
+            // 2. Visit all neighboring pixels
+            for (int ky = -radius; ky <= radius; ky++) {
+                for (int kx = -radius <= kx <= radius; kx++) {
+                    int nx = x + kx;
+                    int ny = y + ky;
+
+                    // 3. If neighbor is outside or INVALID, skip the pixel
+                    if (nx < 0 || nx > result.width || ny < 0 || ny > result.height || disparity.data[y * disparity.height + x] == INVALID_VALUE) {
+                        continue;
+                    }
+
+
+
+                    // 4. For each neighbor compute weight
+                    float dist = sqrt(pow(nx - x, 2) + pow(ny - y, 2));
+                    float diff_value = guide.data[ny * guide.height + nx];
+
+                    float weight_neighbor = gaus;
+
+                    float weight = gauss(distance, sigma) * gauss(guide_distance, guide_sigma);
+
+                }
+            }
+
+
+
+        }
+    }
 
     auto example = gauss(0.5f, 1.2f); // This is just an example of computing Normal pdf for x=0.5 and std.dev=1.2.
 

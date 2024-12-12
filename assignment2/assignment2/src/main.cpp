@@ -47,8 +47,8 @@ int main()
     SceneParams scene_params;
      
     // Change your inputs here!
-    const auto input_select = InputSelection::Mini;
-    //const auto input_select = InputSelection::Middlebury;
+    //const auto input_select = InputSelection::Mini;
+    const auto input_select = InputSelection::Middlebury;
 
     switch (input_select) {
         case InputSelection::Mini:
