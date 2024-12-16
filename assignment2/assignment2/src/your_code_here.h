@@ -151,18 +151,36 @@ ImageFloat jointBilateralFilter(const ImageFloat& disparity, const ImageRGB& gui
 /// <returns></returns>
 void normalizeValidValues(ImageFloat& scalar_image)
 {
-    //
-    // Find minimum and maximum among the VALID image values.
-    // Linearly rescale the VALID image values to the [0,1] range (in-place).
-    // The INVALID values remain INVALID (they are ignored).
-    // 
-    // Note #1: Pixel is INVALID as long as value == INVALID_VALUE.
-    // Note #2: This modified the input image in-place => no "return".
-    //
+    float min = std::numeric_limits<float>::min();
+    float max = std::numeric_limits<float>::max();
     
-    //
-    //    YOUR CODE GOES HERE
-    //
+    // Find minimum and maximum among the VALID image values
+    for (int y = 0; y < scalar_image.height; y++) {
+        for (int x = 0; x < scalar_image.width; x++) {
+
+            float scalar_value = scalar_image.data[y * scalar_image.width + x];
+
+            if (scalar_value == INVALID_VALUE) {
+                continue;
+            }
+
+            min = std::min(scalar_value, min);
+            max = std::max(scalar_value, max);
+        }
+    }
+
+    // Lineearly rescale the VALID image values to the [0, 1] range (in-place)
+    for (int y = 0; y < scalar_image.height; y++) {
+        for (int x = 0; x < scalar_image.width; x++) {
+            float& scalar_value = scalar_image.data[y * scalar_image.width + x];
+
+            if (scalar_value == INVALID_VALUE) {
+                continue;
+            }
+
+            scalar_value = (scalar_value - min) / (max - min);
+        }
+    }
 }
 
 /// <summary>
