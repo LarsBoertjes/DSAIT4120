@@ -77,71 +77,67 @@ ImageFloat jointBilateralFilter(const ImageFloat& disparity, const ImageRGB& gui
     // We assume both images have matching dimensions.
     assert(disparity.width == guide.width && disparity.height == guide.height);
 
-    // Rule of thumb for gaussian's std dev. 
+    // Rule of thumb for gaussian's std dev.
     const float sigma = (size - 1) / 2 / 3.2f;
 
     // Empty output image.
     auto result = ImageFloat(disparity.width, disparity.height);
 
-
-    //
-    // Implement a bilateral filter of the disparity image guided by the guide.
-    // Ignore all contributing pixels where disparity == INVALID_VALUE.
-    //
-    // 1. Iterate over all output pixels.
-    // 2. For each output pixel, visit all neighboring pixels (including itself) in a size x size symmetric neighborhood. 
-    //    That is the same as during convolution with a size x size symmetric filter centered around the pixel.
-    // 3. If a neighbor is outside of the image or its disparity == INVALID_VALUE, skip the pixel (move to the next one).
-    // 4. For each neighbor compute its weight as w_i = gauss(dist, sigma) * gauss(diff_value, guide_sigma)
-    //      where
-    //          * dist is the Eucledian distance between the center and current pixel in pixels (L2 norm).
-    //          * diff_value is the L2 (euclidean) distance of the guide image pixel values for the center and current pixel.
-    //          * gauss(x, sigma) is a Normal distribution pdf function for x=x and std.dev.= sigma which is available for use.
-    // 5. Compute weighted mean of all (unskipped) neighboring pixel disparities and assign it to the output.
-    // 
-    // Refer to the first Lecture or recommended study books for more info on Bilateral filtering.
-    // 
-    // Notes:
-    //   * If a pixel has no neighbor (all were skipped), assign INVALID_VALUE to the output.  
-    //   * One point awarded for a correct OpenMP parallelization.
-    
     int radius = size / 2;
 
     // 1. Iterate over all output pixels.
+    #pragma omp parallel for 
     for (int y = 0; y < result.height; y++) {
         for (int x = 0; x < result.width; x++) {
-            
+
+            float weighted_sum = 0.0f;
+            float weight_sum = 0.0f;
+
             // 2. Visit all neighboring pixels
             for (int ky = -radius; ky <= radius; ky++) {
-                for (int kx = -radius <= kx <= radius; kx++) {
+                for (int kx = -radius; kx <= radius; kx++) {
                     int nx = x + kx;
                     int ny = y + ky;
 
-                    // 3. If neighbor is outside or INVALID, skip the pixel
-                    if (nx < 0 || nx > result.width || ny < 0 || ny > result.height || disparity.data[y * disparity.height + x] == INVALID_VALUE) {
+                    // 3. If a neighbor is outside the image or its disparity == INVALID_VALUE, skip the pixel
+                    if (nx < 0 || ny < 0 || nx >= disparity.width || ny >= disparity.height) {
                         continue;
                     }
 
+                    float disparity_center = disparity.data[y * disparity.width + x];
+                    float disparity_neighbor = disparity.data[ny * disparity.width + nx];
 
+                    if (disparity_neighbor == INVALID_VALUE) {
+                        continue;
+                    }
 
-                    // 4. For each neighbor compute weight
-                    float dist = sqrt(pow(nx - x, 2) + pow(ny - y, 2));
-                    float diff_value = guide.data[ny * guide.height + nx];
+                    glm::vec3 guide_center = guide.data[y * guide.width + x];
+                    glm::vec3 guide_neighbor = guide.data[ny * guide.width + nx];
 
-                    float weight_neighbor = gaus;
+                    // 4. For each neighbor compute w_i = gauss(dist, sigma) * gauss(diff_value, guide_sigma)
+                    // dist = euclidean distance between the center and current pixel in pixels
+                    float dist = std::sqrt(std::pow((nx - x), 2) + std::pow((ny - y), 2));
+                    // diff_value = euclidean distance of the guide image pixel values for the center and current pixel
+                    float diff_value = std::sqrt(
+                        std::pow(guide_center.r - guide_neighbor.r, 2) + 
+                        std::pow(guide_center.g - guide_neighbor.g, 2) + 
+                        std::pow(guide_center.b - guide_neighbor.b, 2)
+                    );
 
-                    float weight = gauss(distance, sigma) * gauss(guide_distance, guide_sigma);
+                    float weight = gauss(dist, sigma) * gauss(diff_value, guide_sigma);
 
+                    weighted_sum += weight * disparity_neighbor;
+                    weight_sum += weight;
                 }
             }
 
-
-
+            if (weight_sum > 0.0f) {
+                result.data[y * disparity.width + x] = weighted_sum / weight_sum;
+            } else {
+                result.data[y * disparity.width + x] = INVALID_VALUE;
+            }
         }
     }
-
-    auto example = gauss(0.5f, 1.2f); // This is just an example of computing Normal pdf for x=0.5 and std.dev=1.2.
-
 
     // Return filtered disparity.
     return result;
