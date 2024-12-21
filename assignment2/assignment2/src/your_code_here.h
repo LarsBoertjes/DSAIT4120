@@ -48,12 +48,43 @@ inline T sampleBilinear(const Image<T>& image, const glm::vec2& pos_px)
     // Use glm API for further reference: https://glm.g-truc.net/0.9.9/api/a00241.html
     // 
     
-    //
-    //    YOUR CODE GOES HERE
-    //
+    const int width = image.width;
+    const int height = image.height;
 
-    return image.data[0]; // <-- Change this.
+    glm::vec2 clamped_pos = glm::clamp(pos_px, glm::vec2(0), glm::vec2(width, height));
+
+    // Calculate the fractional and integer parts of the input position
+    int x0 = static_cast<int>(std::floor(clamped_pos.x - 0.5f)); // Pixel to the left
+    int y0 = static_cast<int>(std::floor(clamped_pos.y - 0.5f)); // Pixel above
+    int x1 = x0 + 1; // Pixel to the right
+    int y1 = y0 + 1; // Pixel below
+
+    // Clamp the indices to ensure they are within valid bounds
+    x0 = glm::clamp(x0, 0, width - 1);
+    y0 = glm::clamp(y0, 0, height - 1);
+    x1 = glm::clamp(x1, 0, width - 1);
+    y1 = glm::clamp(y1, 0, height - 1);
+
+    // Compute the weights for interpolation
+    float dx = clamped_pos.x - (x0 + 0.5f);
+    float dy = clamped_pos.y - (y0 + 0.5f);
+
+    float w00 = (1.0f - dx) * (1.0f - dy); 
+    float w01 = (1.0f - dx) * dy; 
+    float w10 = dx * (1.0f - dy); 
+    float w11 = dx * dy; 
+
+    // Access the 4 neighboring pixel values
+    T v00 = image.data[y0 * width + x0]; 
+    T v01 = image.data[y1 * width + x0]; 
+    T v10 = image.data[y0 * width + x1]; 
+    T v11 = image.data[y1 * width + x1]; 
+
+    T interpolated_value = w00 * v00 + w01 * v01 + w10 * v10 + w11 * v11;
+
+    return interpolated_value;
 }
+
 
 
 /*
@@ -151,8 +182,8 @@ ImageFloat jointBilateralFilter(const ImageFloat& disparity, const ImageRGB& gui
 /// <returns></returns>
 void normalizeValidValues(ImageFloat& scalar_image)
 {
-    float min = std::numeric_limits<float>::min();
-    float max = std::numeric_limits<float>::max();
+    float min = std::numeric_limits<float>::max();
+    float max = -std::numeric_limits<float>::max();
     
     // Find minimum and maximum among the VALID image values
     for (int y = 0; y < scalar_image.height; y++) {
@@ -192,17 +223,20 @@ void normalizeValidValues(ImageFloat& scalar_image)
 ImageFloat disparityToNormalizedDepth(const ImageFloat& disparity)
 {
     auto depth = ImageFloat(disparity.width, disparity.height);
-
-    //
-    // Convert disparity to a depth with unknown scale:
-    //    depth_unscaled = 1.0 / disparity
-    // If disparity of a pixel is invalid, set its depth also invalid (INVALID_VALUE).
-    // We guarantee that all valid disparities > 0.
-    //
         
-    //
-    //    YOUR CODE GOES HERE
-    //
+    for (int y = 0; y < disparity.height; y++) {
+        for (int x = 0; x < disparity.width; x++) {
+            float disparity_value = disparity.data[y * disparity.width + x];
+
+            // If disparity of a pixel is invalid, set its depth also invalid (INVALID_VALUE)
+            if (disparity_value == INVALID_VALUE) {
+                depth.data[y * disparity.width + x] = INVALID_VALUE;
+            } else {
+                //    depth_unscaled = 1.0 / disparity
+                depth.data[y * disparity.width + x] = 1.0f / disparity_value;
+            }
+        }
+    }
 
     // Rescales valid depth values to [0,1] range.
     normalizeValidValues(depth);
@@ -247,9 +281,24 @@ ImageFloat normalizedDepthToDisparity(
     //    * Invalid pixels (depth==INVALID_VALUE) are to be marked invalid on the output as well.
     //
     
-    //
-    //    YOUR CODE GOES HERE
-    //
+    for (int y = 0; y < depth.height; y++) {
+        for (int x = 0; x < depth.width; x++) {
+            float depth_value = depth.data[y * depth.width + x];
+            
+            if (depth_value == INVALID_VALUE) {
+                px_disparity.data[y * depth.width + x] = INVALID_VALUE;
+                continue;
+            }
+
+            // Compute depth in millimeters
+            float depth_mm = near_plane_mm + depth_value * (far_plane_mm - near_plane_mm);
+
+            // Calculate disparity in pixels
+            float disparity_mm = iod_mm * (screen_distance_mm - depth_mm) / (depth_mm * px_size_mm);
+            px_disparity.data[y * depth.width + x] = disparity_mm;
+
+        }
+    }
 
     return px_disparity; // returns disparity measured in pixels
 }
@@ -281,9 +330,11 @@ Mesh createWarpingGrid(const int width, const int height)
     // The order in memory is to be the same as for images (row after row).
     // 
     
-    //
-    //    YOUR CODE GOES HERE
-    //
+    for (int y = 0; y <= height; y++) {
+        for (int x = 0; x <= width; x++) {
+            vertices[y * (width + 1) + x] = glm::vec2(x, y);
+        }
+    }
 
     // Build index buffer.
     auto num_pixels = width * height;
@@ -313,9 +364,22 @@ Mesh createWarpingGrid(const int width, const int height)
     // The result should be a grid that fills an entire image and replaces each pixel with two small triangles.
     //
     
-    //
-    //    YOUR CODE GOES HERE
-    //
+    int triangle_index = 0;
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            int top_left = y * (width + 1) + x;
+            int top_right = top_left + 1;
+            int bottom_left = top_left + (width + 1);
+            int bottom_right = bottom_left + 1;
+
+            // First triangle A, B, C
+            triangles[triangle_index++] = glm::ivec3(top_left, top_right, bottom_right);
+
+            // Second triangle A, C, D
+            triangles[triangle_index++] = glm::ivec3(top_left, bottom_right, bottom_left);
+        }
+    }
+
     // Combine the vertex and index buffers into a mesh.
     return Mesh { std::move(vertices), std::move(triangles) };
 }
@@ -354,11 +418,15 @@ Mesh warpGrid(Mesh& grid, const ImageFloat& disparity, const float scaling_facto
     auto interpolated_value = sampleBilinear(disparity, glm::vec2(1.0f, 1.0f));
     // Recommended test: For a 2x2 image it SHOULD return the mean of the 4 pixels.
     
-    //
-    //    YOUR CODE GOES HERE
-    //
+    for (auto& vertex : new_grid.vertices) {
+        if (vertex.x < EDGE_EPSILON || vertex.x > disparity.width - EDGE_EPSILON) {
+            continue;
+        }
 
+        float sampled_disparity = sampleBilinear(disparity, vertex);
 
+        vertex.x += scaling_factor * sampled_disparity;
+    }
 
     return new_grid;
 }
@@ -415,9 +483,33 @@ ImageWithMask forwardWarpImage(const ImageRGB& src_image, const ImageFloat& src_
     // Note: Point(s) awarded for a correct and efficient parallel solution using OpenMP.
     //
     
-    //
-    //    YOUR CODE GOES HERE
-    //
+    for (int y = 0; y < src_image.height; y++) {
+        for (int x = 0; x < src_image.width; x++) {
+            float disparity_value = disparity.data[y * disparity.width + x];
+            float depth_value = src_depth.data[y * src_depth.width + x];
+
+            if (disparity_value == INVALID_VALUE || depth_value == INVALID_VALUE) {
+                continue;
+            }
+
+            // Compute target position
+            int target_x = std::round(x + warp_factor * disparity_value);
+            int target_y = y;
+
+            if (target_x < 0 || target_x >= src_image.width || target_y < 0 || target_y >= src_image.height) {
+                continue; // i think we can skip the target_y checks here no?
+            }
+
+            int target_idx = target_y * dst_image.width + target_x;
+            if (depth_value >= dst_depth.data[target_idx]) {
+                continue;
+            }
+
+            dst_image.data[target_idx] = src_image.data[y * src_image.width + x];
+            dst_depth.data[target_idx] = depth_value;
+            dst_mask.data[target_idx] = 1.0f;
+        }
+    }
 
 
     // Return the warped image.
@@ -427,7 +519,7 @@ ImageWithMask forwardWarpImage(const ImageRGB& src_image, const ImageFloat& src_
 
 
 /// <summary>
-/// Applies the bilateral filter on the given image to fill the holes
+/// Applies the gaussian filter on the given image to fill the holes
 /// indicated by a binary mask (mask==0 -> missing pixel).
 /// Keeps the pixels not marked as holes unchanged.
 /// </summary>
@@ -440,34 +532,57 @@ ImageRGB inpaintHoles(const ImageWithMask& img, const int size)
     // The filter size is always odd.
     assert(size % 2 == 1);
 
-    // Rule of thumb for gaussian's std dev.
+    // Rule of thumb for Gaussian's std dev.
     const float sigma = (size - 1) / 2 / 3.2f;
 
-    // The output is initialized by copy of the input.
+    // The output is initialized by a copy of the input image.
     auto result = ImageRGB(img.image);
-    
 
-    // The goal is to fill the holes in forward warping image using a bilateral filter where the mask serves as a guide.
-    
-    // 1. For valid pixels (mask >= 0.5) -> do nothing and keep the valid pixel.
-    // 2. For invalid pixels -> replace pixel with:
-    //      Filter valid neighbors in [size x size] in a symmetric neighborhood 
-    //      with a Gaussian filter weight w_i = gauss(dist, sigma) where
-    //          * dist is the Euclidean distance between the center and current pixel in pixels (L2 norm).
-    //          * gauss(x, sigma) is a Normal distribution pdf function for x=x and std.dev.= sigma which is available for use.
-    //      !!!! SKIP invalid neighbors (mask < 0.5) !!!!
-    // 
-    // Notes:
-    //   * Keep pixels with no valid neighbors unmodified.
+    const int width = img.image.width;
+    const int height = img.image.height;
+    const int radius = size / 2;
 
-    //
-    //    YOUR CODE GOES HERE
-    //
-    
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            // Skip valid pixels (mask >= 0.5).
+            if (img.mask.data[y * img.mask.width + x] >= 0.5f) {
+                continue;
+            }
 
-    // Return inpainted image.
+            float weight_sum = 0.0f;
+            glm::vec3 color_sum(0.0f, 0.0f, 0.0f);
+
+            for (int dy = -radius; dy <= radius; dy++) {
+                for (int dx = -radius; dx <= radius; dx++) {
+                    int nx = x + dx;
+                    int ny = y + dy;
+
+                    if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+                        continue;
+                    }
+
+                    if (img.mask.data[ny * img.mask.width + nx] < 0.5f) {
+                        continue;
+                    }
+
+                    float dist = std::sqrt(dx * dx + dy * dy);
+                    float weight = std::exp(-(dist * dist) / (2 * sigma * sigma));
+
+                    color_sum += weight * img.image.data[ny * img.image.width + nx];
+                    weight_sum += weight;
+                }
+            }
+
+            if (weight_sum > 0.0f) {
+                result.data[y * result.width + x] = color_sum / weight_sum;
+            }
+        }
+    }
+
+    // Return the inpainted image.
     return result;
 }
+
 
 /// <summary>
 /// Backward-warps an image using a warped mesh.
@@ -482,72 +597,59 @@ ImageRGB inpaintHoles(const ImageWithMask& img, const int size)
 ImageRGB backwardWarpImage(const ImageRGB& src_image, const ImageFloat& src_depth, const Mesh& src_grid, const Mesh& dst_grid,
     const BilinearSamplerFloat& sampleBilinear, const BilinearSamplerRGB& sampleBilinearRGB)
 {
-    // The dimensions of src image and depth match.
     assert(src_image.width == src_depth.width && src_image.height == src_depth.height);
-    // We assume that both grids have the same size and also the same order (ie., there is 1:1 triangle pairing).
-    // This implies that the content of index buffers of both meshes are exactly equal (we do not test it here).
     assert(src_grid.triangles.size() == dst_grid.triangles.size());
 
-    // Create a new image and depth map for the output.
     auto dst_image = ImageRGB(src_image.width, src_image.height);
     auto dst_depth = ImageFloat(src_depth.width, src_depth.height);
-    // Fill the destination depth map with a very large number.
     std::fill(dst_depth.data.begin(), dst_depth.data.end(), 1e20f);
 
-    //
-    // This method implements mesh-based warping by rasterizing
-    // each triangle of the destination grid and sampling
-    // the source texture by looking up corresponding 
-    // position in the source grid using barycentric coordinates.
-    // 
-    // 1. For every triangle in the warped grid (dst_grid), 
-    //    determine X and Y ranges of destination pixel coordinates
-    //    whose **centers** lie in the bounding box of the triangle.
-    //    Note: Look back to createWarpingGrid() for definition
-    //          of the grid vertex coordinates.
-    // 
-    // 2. Enumerate all candidate pixels within the bounding box.
-    //    Skip pixels whose centers actually do not lie inside the triangle.
-    //    Use the provided isPointInsideTriangle(pt_dst, vert_a, vert_b, vert_c)
-    //    method to do the test.
-    // 
-    // 3. Compute barycentric coordinates of the pixel center in the triangle
-    //    using the provided method bc = barycentricCoordinates(pt_dst, vert_a, vert_b, vert_c).
-    // 
-    // 4. Find the corresponding triangle in the original mesh. It has the same triangle index.
-    // 
-    // 5. Reproject the pixel center to the source grid by using the already computed barycentric
-    //    coordinates:
-    //        pt_src = (vert_a_src, vert_b_src, vert_c_src) * bc
-    // 
-    // 6. Bilinearly sample both the source depth map and the source image values at the pt_src
-    //    position. 
-    //    Hint: Use the sampleBilinear[RGB]() method implemented earlier (using the provided function arguments).
-    // 
-    // 7. Compare the depth in the source and destination depth values and implement the depth-test
-    //    like in fowardWarpImage().
-    //    Hint: The destination map can be accessed directly without interpolation because we are
-    //          computing for an exact pixel coordinate.
-    // 
-    // 8. If the depth test passes, write out the destination image (dst_image) and depth (dst_depth) values. 
-    //    Again, it is the same logic as in fowardWarpImage().
-    // 
-    // 9. Return the warped image (dst_image).
-    //
-    
-    // Example of testing point [0.1, 0.2] is inside a triangle.
-    bool is_point_inside = isPointInsideTriangle(glm::vec2(0.1, 0.2), glm::vec2(0, 0), glm::vec2(1, 0), glm::vec2(0, 1));
+    for (size_t tri_idx = 0; tri_idx < dst_grid.triangles.size(); ++tri_idx) {
+        const auto& tri_dst = dst_grid.triangles[tri_idx];
+        glm::vec2 vert_a_dst = dst_grid.vertices[tri_dst[0]];
+        glm::vec2 vert_b_dst = dst_grid.vertices[tri_dst[1]];
+        glm::vec2 vert_c_dst = dst_grid.vertices[tri_dst[2]];
 
-    // Example of computing barycentric coordinates of a point [0.1, 0.2] inside a triangle.
-    glm::vec3 bc = barycentricCoordinates(glm::vec2(0.1, 0.2), glm::vec2(0, 0), glm::vec2(1, 0), glm::vec2(0, 1));
+        const auto& tri_src = src_grid.triangles[tri_idx];
+        glm::vec2 vert_a_src = src_grid.vertices[tri_src[0]];
+        glm::vec2 vert_b_src = src_grid.vertices[tri_src[1]];
+        glm::vec2 vert_c_src = src_grid.vertices[tri_src[2]];
 
-    //
-    //    YOUR CODE GOES HERE
-    //
+        float min_x = std::floor(std::min({ vert_a_dst.x, vert_b_dst.x, vert_c_dst.x }));
+        float max_x = std::ceil(std::max({ vert_a_dst.x, vert_b_dst.x, vert_c_dst.x }));
+        float min_y = std::floor(std::min({ vert_a_dst.y, vert_b_dst.y, vert_c_dst.y }));
+        float max_y = std::ceil(std::max({ vert_a_dst.y, vert_b_dst.y, vert_c_dst.y }));
 
-    // Return the warped image.
+        min_x = std::max(min_x, 0.0f);
+        max_x = std::min(max_x, static_cast<float>(dst_image.width - 1));
+        min_y = std::max(min_y, 0.0f);
+        max_y = std::min(max_y, static_cast<float>(dst_image.height - 1));
+
+        for (int y = static_cast<int>(min_y); y <= static_cast<int>(max_y); ++y) {
+            for (int x = static_cast<int>(min_x); x <= static_cast<int>(max_x); ++x) {
+                glm::vec2 pt_dst = glm::vec2(x + 0.5f, y + 0.5f);
+
+                if (!isPointInsideTriangle(pt_dst, vert_a_dst, vert_b_dst, vert_c_dst)) {
+                    continue;
+                }
+
+                glm::vec3 bc = barycentricCoordinates(pt_dst, vert_a_dst, vert_b_dst, vert_c_dst);
+                glm::vec2 pt_src = bc.x * vert_a_src + bc.y * vert_b_src + bc.z * vert_c_src;
+                float depth_src = sampleBilinear(src_depth, pt_src);
+                glm::vec3 color_src = sampleBilinearRGB(src_image, pt_src);
+
+                if (depth_src < dst_depth.data[y * dst_depth.width + x]) {
+                    dst_depth.data[y * dst_depth.width + x] = depth_src;
+                    dst_image.data[y * dst_image.width + x] = color_src;
+                }
+            }
+        }
+    }
+
     return dst_image;
 }
+
+
 
 /// <summary>
 /// Returns an anaglyph image.
@@ -583,9 +685,28 @@ ImageRGB createAnaglyph(const ImageRGB& image_left, const ImageRGB& image_right,
     auto rgb_orig = glm::vec3(0.2, 0.6, 0.4);
     auto rgb_should_be_same = hsvToRgb(rgbToHsv(rgb_orig)); // expect rgb == rgb_2 (up to numerical precision)
 
-    //
-    //    YOUR CODE GOES HERE
-    //
+    for (int y = 0; y < image_left.height; y++) {
+        for (int x = 0; x < image_left.width; x++) {
+            glm::vec3 left_pixel = image_left.data[y * image_left.width + x];
+            glm::vec3 right_pixel = image_right.data[y * image_right.width + x];
+
+            // Adjust saturation
+            glm::vec3 left_hsv = rgbToHsv(left_pixel);
+            left_hsv.y *= saturation;
+            glm::vec3 left_rgb_adjusted = hsvToRgb(left_hsv);
+
+            glm::vec3 right_hsv = rgbToHsv(right_pixel);
+            right_hsv.y *= saturation;
+            glm::vec3 right_rgb_adjusted = hsvToRgb(right_hsv);
+
+            // Combine the two images
+            float red = left_rgb_adjusted.r;
+            float green = right_rgb_adjusted.g;
+            float blue = right_rgb_adjusted.b;
+
+            anaglyph.data[y * anaglyph.width + x] = glm::vec3(red, green, blue);
+        }
+    }
 
     // Returns a single analgyph image.
     return anaglyph;
