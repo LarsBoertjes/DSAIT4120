@@ -23,3 +23,7 @@ assignment3_pytorch/environment.yml
 assignment3_pytorch/Part1/.DS_Store
 assignment3_pytorch/Part2/.DS_Store
 assignment3_pytorch/SETUP.txt
+/assignment3_pytorch/.idea
+/assignment3_pytorch/data
+/assignment3_pytorch/Part1/__pycache__
+assignment3_pytorch/model.pth

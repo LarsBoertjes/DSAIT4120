@@ -15,6 +15,7 @@ def normalize(img, mean, std):
     """
     # TODO: 1. Implement normalization doing channel-wise z-score normalization.
     # Do not use for-loops, make use of Pytorch vectorized operations.
+    img = (img - mean) / std
 
     return img 
 
