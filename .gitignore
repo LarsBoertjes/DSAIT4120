@@ -12,3 +12,14 @@ assignment1/assignment1/outputs.zip
 /assignment2/assignment2/.vs
 /assignment2/assignment2/out
 /assignment2/assignment2/outputs
+/assignment3_pytorch/Part1/data
+/assignment3_pytorch/Part2/data
+/assignment3_pytorch/Part2/dnnlib
+/assignment3_pytorch/Part2/torch_utils
+/assignment3_pytorch/Part2/training
+/assignment3_pytorch/Part2/weights
+assignment3_pytorch/.DS_Store
+assignment3_pytorch/environment.yml
+assignment3_pytorch/Part1/.DS_Store
+assignment3_pytorch/Part2/.DS_Store
+assignment3_pytorch/SETUP.txt
