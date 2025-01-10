@@ -119,10 +119,21 @@ def total_variation_loss(y):
     
     # Returns the total variation, a torch.tensor of size (1)
     """
-    # TODO: 4. Implement the total variation loss. Normalize by tensor dimension sizes
-    # Do not use for-loops, make use of Pytorch vectorized operations.
 
-    return torch.rand((1), requires_grad=True) # Placeholder such that the code runs
+    # Difference between neighboring pixels
+    diff_y = y[:, :, 1:, :] - y[:, :, :-1, :]
+    diff_x = y[:, :, :, 1:] - y[:, :, :, :-1]
+
+    # Squared difference
+    tv_loss = torch.sum(diff_y ** 2) + torch.sum(diff_x ** 2)
+
+    # Calculate normalization factor
+    batch_size, channels, height, width = y.shape
+    normalization_factor = batch_size * channels * (height - 1) * (width - 1)
+
+    tv_loss /= normalization_factor
+
+    return tv_loss
 
 def get_gradient_imgs(img):
     """ Calculates the gradient images based on the sobel kernel.
@@ -143,10 +154,23 @@ def get_gradient_imgs(img):
     # Returns the gradient images, concatenated along the second dimension. 
       Size (1,2,H-2,W-2)
     """
-    # TODO: 5. Calculate the gradient images based on the sobel kernel
-    # Do not use for-loops, make use of Pytorch vectorized operations.
 
-    return torch.zeros_like(img, requires_grad=True) # Placeholder such that the code runs
+    # Sobel kernels
+    sobel_x = torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+    sobel_y = torch.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+
+    # Move kernels to same device as image
+    sobel_x = sobel_x.to(img.device)
+    sobel_y = sobel_y.to(img.device)
+
+    # Get gradients in x and y directions with convolution
+    grad_x = torch.nn.functional.conv2d(img, sobel_x, stride=1, padding=0)
+    grad_y = torch.nn.functional.conv2d(img, sobel_y, stride=1, padding=0)
+
+    grad_x = grad_x[:, :, 1:-1, 1:-1]
+    grad_y = grad_y[:, :, 1:-1, 1:-1]
+
+    return torch.cat([grad_x, grad_y], dim=1)
 
 def edge_loss(img1, img2):
     """ Calculates the edge loss based on the mean squared error between the two images.
@@ -157,7 +181,6 @@ def edge_loss(img1, img2):
     
     # Returns the edge loss, a torch.tensor of size (1)
     """
-    # TODO: 6. Calculate the edge loss
-    # Do not use for-loops, make use of Pytorch vectorized operations.
+    edge_loss_value = torch.nn.functional.mse_loss(img1, img2)
 
-    return torch.rand((1), requires_grad=True) # Placeholder such that the code runs
+    return edge_loss_value
