@@ -13,8 +13,9 @@ def normalize(img, mean, std):
 
     # Returns the normalized image
     """
-    # TODO: 1. Implement normalization doing channel-wise z-score normalization.
-    # Do not use for-loops, make use of Pytorch vectorized operations.
+    mean = mean.view(1, -1, 1, 1)
+    std = std.view(1, -1, 1, 1)
+
     img = (img - mean) / std
 
     return img 
@@ -39,23 +40,42 @@ def content_loss(input_features, content_features, content_layers):
     # - Only the layers given in content_layers should be used for calculating this loss.
     # - Normalize the loss by the number of layers.
 
+    loss = 0.0
+
+    for layer in content_layers:
+        F_l = input_features[layer]
+        P_l = content_features[layer]
+
+        loss += torch.nn.functional.mse_loss(F_l, P_l)
+
+    loss /= len(content_layers)
     
-    return torch.rand((1), requires_grad=True) # Placeholder such that the code runs
+    return loss
 
 def gram_matrix(x):
     """ Calculates the gram matrix for a given feature matrix.
 
-    # NOTE: Normalize by number of number of dimensions of the feature matrix.
+    # NOTE: Normalize by number of dimensions of the feature matrix.
     
     # Parameters:
         @x, torch.tensor of size (b, c, h, w) 
 
     # Returns the gram matrix
     """
-    # TODO: 3.2 Implement the calculation of the normalized gram matrix. 
-    # Do not use for-loops, make use of Pytorch functionalities.
 
-    return x
+    # Get the size of the matrix
+    b, c, h, w = x.size()
+
+    # Flatten the matrix
+    features = x.view(b, c, -1)
+
+    # Compute Gram matrix
+    gram = torch.bmm(features, features.transpose(1, 2))
+
+    # Normalize matrix
+    gram /= (h * w)
+
+    return gram
 
 def style_loss(input_features, style_features, style_layers):
     """ Calculates the style loss as in Gatys et al. 2016.
@@ -72,13 +92,24 @@ def style_loss(input_features, style_features, style_layers):
     
     # Returns the style loss, a torch.tensor of size (1)
     """
-    # TODO: 3.1 Implement the style loss given the input feature volume and the
-    # style feature volume. Note that:
-    # - Only the layers given in style_layers should be used for calculating this loss.
-    # - Normalize the loss by the number of layers.
-    # - Implement the gram_matrix function.
+    loss = 0.0
 
-    return torch.rand((1), requires_grad=True) # Placeholder such that the code runs
+    for layer in style_layers:
+        # Get the feature maps for the current layers for input and style images
+        F_l = input_features[layer]
+        A_l = style_features[layer]
+
+        # Compute Gram matrices
+        G_F = gram_matrix(F_l)
+        G_A = gram_matrix(A_l)
+
+        # Compute MSE between Gram matrices
+        loss += torch.nn.functional.mse_loss(G_F, G_A)
+
+    # normalize loss by the number of layers
+    loss /= len(style_layers)
+
+    return loss
 
 def total_variation_loss(y):
     """ Calculates the total variation across the spatial dimensions.
