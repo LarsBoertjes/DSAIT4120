@@ -19,10 +19,17 @@ def get_neighbourhood(p, radius):
 
     # Returns: torch.tensor size [(radius * 2 + 1)**2, 2], the neighbourhood of points around p, including p
     """
-    # TODO: 1. Get Neighbourhood
-    # Do not use for-loops, make use of Pytorch vectorized operations.
+    offsets = torch.arange(-radius, radius + 1, device=p.device)
 
-    return torch.zeros((radius * 2 + 1)**2, device=p.device) # Placeholder such that the code runs
+    x_offsets, y_offsets = torch.meshgrid(offsets, offsets)
+
+    grid_points = torch.stack([x_offsets.flatten(), y_offsets.flatten()], dim=1)
+
+    # Shift all points with p
+    neighbourhood = p + grid_points
+    #print(neighbourhood)
+
+    return neighbourhood
 
 def sample_p_from_feature_map(q_N, F):
     """ Samples the feature map F at the points q_N.
@@ -39,10 +46,26 @@ def sample_p_from_feature_map(q_N, F):
     """
     assert F.shape[-1] == F.shape[-2]
 
-    # TODO: 2. Sample features from neighbourhood
-    # Do not use for-loops, make use of Pytorch vectorized operations.
+    # Get the feature map's dimensions
+    _, C, H, W = F.shape
 
-    return torch.zeros((q_N.shape[0], F.shape[1]), device=q_N.device, requires_grad=True) # Placeholder such that the code runs
+    # Normalize the sampling coordinates for Pytorch's grid_sample
+    q_N_normalized = q_N.clone()
+    # Normalize x-coordinates relative to width W
+    q_N_normalized[:, 0] = 2.0 * q_N[:, 0] / (W - 1) - 1.0
+    # Normalize y-coordinates relative to height H
+    q_N_normalized[:, 1] = 2.0 * q_N[:, 1] / (H - 1) - 1.0
+
+    # Reshape coordinates for input format grid_sample (add batch dimension and spatial dimension)
+    grid = q_N_normalized.unsqueeze(0).unsqueeze(2)
+
+
+    sampled_features = Func.grid_sample(F, grid, mode='bilinear', align_corners=True)
+
+    sampled_features = sampled_features.squeeze(2).squeeze(0).T
+
+    return sampled_features
+
 
 def nearest_neighbour_search(f_p, F_q_N, q_N):
     """ Does a nearest neighbourhood search in feature space to find the new handle point position.
@@ -51,15 +74,28 @@ def nearest_neighbour_search(f_p, F_q_N, q_N):
 
     # Parameters:
         @f_p: torch.tensor size [1, C], the feature vector of the handle point p
-        @F: torch.tensor size [1, C, H, W], the feature map of the current image
+        @F_q_N: torch.tensor size [N, C], feature vectors at points q_N
         @q_N: torch.tensor size [N, 2], corresponding points to F_q_N in the image space
 
-    # Returns: torch.tensor size [2], the new handle point p 
+    # Returns: torch.tensor size [2], the new handle point p
     """
-    # TODO: 3. Neighbourhood search
-    # Do not use for-loops, make use of Pytorch vectorized operations.
+    F_q_N = F_q_N.squeeze(0) # Now F_q_N has shape [25, 512]
+    print(f"F_q_N shape: {F_q_N.shape}") # check
 
-    return torch.rand((2)) # Placeholder such that the code runs
+    # Calculate L1 distances between f_p and all of F_q_N
+    l1_distances = torch.sum(torch.abs(F_q_N - f_p), dim=1)  # Now l1_distances has shape [25]
+
+    print(f"F_q_N shape: {F_q_N.shape}, q_N shape: {q_N.shape}, distances shape: {l1_distances.shape}")
+
+    # Find the index of the minimum L1 distance and set nearest neighbor
+    min_index = torch.argmin(l1_distances)  # min_index should be in range [0, 24]
+
+    print(f"min_index: {min_index}")
+
+    # Return the corresponding point in q_N
+    new_handle_point = q_N[min_index]
+
+    return new_handle_point
 
 def get_mask_loss(F_1, F_2, mask):
     """ Returns the mask loss.
@@ -73,7 +109,17 @@ def get_mask_loss(F_1, F_2, mask):
     
     # Returns: torch.tensor of size [1], the mask loss
     """
-    # TODO: 4. Mask loss
-    # Do not use for-loops, make use of Pytorch vectorized operations.
 
-    return torch.rand((2), device=F_1.device, requires_grad=True) # Placeholder such that the code runs 
+    # make mask broadcastable to F_1 and F_2
+    mask = mask.unsqueeze(0).unsqueeze(0)
+
+    # compute difference between feature maps
+    diff = torch.abs(F_1 - F_2)
+
+    # compute loses for moving and fixed regions
+    moving_loss = torch.mean(diff * mask)
+    fixed_loss = torch.mean(diff * ( 1 - mask))
+
+    mask_loss = moving_loss + fixed_loss
+
+    return mask_loss

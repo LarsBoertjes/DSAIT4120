@@ -27,3 +27,7 @@ assignment3_pytorch/SETUP.txt
 /assignment3_pytorch/data
 /assignment3_pytorch/Part1/__pycache__
 assignment3_pytorch/model.pth
+assignment3_pytorch/pytorch_test.ipynb
+fullsegmentation.png
+assignment3_pytorch/Part2/__pycache__/helper_functions.cpython-310.pyc
+assignment3_pytorch/Part2/__pycache__/your_code_here.cpython-310.pyc
